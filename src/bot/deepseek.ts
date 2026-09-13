@@ -1,6 +1,6 @@
 import axios from "axios";
 import { WeatherData } from "./types.js";
-import { DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL } from "./env.js";  // ← импорт из env.ts
+import { DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL } from "./env.js";
 
 const MODEL = "deepseek-v4-flash";
 

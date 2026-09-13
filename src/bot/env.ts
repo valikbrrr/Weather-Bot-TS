@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 
-// Загружаем .env ПЕРВЫМ делом
 dotenv.config();
 
 export const BOT_TOKEN = process.env.BOT_TOKEN!;
