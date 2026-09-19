@@ -1,8 +1,8 @@
 // src/bot/scheduler.ts
 import cron from "node-cron";
 import { Telegraf } from "telegraf";
-import { getWeatherByCity } from "./weather.js";
-import { getClothingAdvice } from "./deepseek.js";
+import { getDailyForecast } from "./weather.js";
+import { getDailyClothingAdvice } from "./deepseek.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -63,8 +63,6 @@ export function startScheduler(bot: Telegraf<any>) {
   console.log("⏰ Регистрирую cron-задачу '0 * * * * *'...");
 
   cron.schedule("0 * * * * *", async () => {
-    console.log("⏰ Cron callback сработал!");
-
     const now = new Date();
     const currentTime = now.toLocaleTimeString("ru-RU", {
       hour: "2-digit",
@@ -73,28 +71,33 @@ export function startScheduler(bot: Telegraf<any>) {
     });
 
     console.log(`⏰ Тик: ${currentTime}. Подписок: ${subscriptions.size}`);
-    for (const [id, s] of subscriptions) {
-      console.log(`   → чат ${id}: ${s.city} в "${s.time}"`);
-    }
 
     for (const [chatId, sub] of subscriptions) {
       if (sub.time === currentTime) {
-        console.log(`📤 Отправка в чат ${chatId} (${sub.city})...`);
+        console.log(
+          `📤 Отправка дневного прогноза в чат ${chatId} (${sub.city})...`,
+        );
         try {
-          const weather = await getWeatherByCity(sub.city);
-          if (!weather) {
+          // 1. Получаем прогноз на 3 периода (8:00, 14:00, 20:00)
+          const forecast = await getDailyForecast(sub.city);
+
+          if (!forecast) {
             await bot.telegram.sendMessage(
               chatId,
-              `❌ Не удалось получить погоду для города ${sub.city}.`,
+              `❌ Не удалось получить прогноз для города ${sub.city}.`,
             );
             continue;
           }
 
-          const advice = await getClothingAdvice(weather);
+          // 2. Получаем совет от ИИ
+          const advice = await getDailyClothingAdvice(forecast);
 
+          // 3. Формируем сообщение
           const message =
-            `☀️ *Погода в ${sub.city}*\n` +
-            `🌡️ ${weather.temperature}°C, ветер ${weather.windSpeed} м/с, ${weather.condition}\n\n` +
+            `☀️ *Погода в ${sub.city} на сегодня*\n\n` +
+            `🌅 *Утро (08:00):* ${forecast.morning.temperature}°C, ветер ${forecast.morning.windSpeed} км/ч, ${forecast.morning.condition}\n` +
+            `☀️ *День (14:00):* ${forecast.afternoon.temperature}°C, ветер ${forecast.afternoon.windSpeed} км/ч, ${forecast.afternoon.condition}\n` +
+            `🌙 *Вечер (20:00):* ${forecast.evening.temperature}°C, ветер ${forecast.evening.windSpeed} км/ч, ${forecast.evening.condition}\n\n` +
             `${advice}`;
 
           await bot.telegram.sendMessage(chatId, message, {

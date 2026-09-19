@@ -1,27 +1,15 @@
+// src/bot/deepseek.ts
 import axios from "axios";
 import { WeatherData } from "./types.js";
+import { DailyForecast } from "./weather.js";
 import { DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL } from "./env.js";
 
 const MODEL = "deepseek-v4-flash";
 
-export async function getClothingAdvice(weather: WeatherData): Promise<string> {
-  const prompt = `
-Ты — умный помощник по выбору одежды. Пользователь сообщил тебе погоду.
-На основе этих данных дай чёткую, практичную рекомендацию, что надеть на улицу сегодня.
-
-Погодные данные:
-- Температура: ${weather.temperature}°C
-- Ветер: ${weather.windSpeed} м/с
-- Осадки: ${weather.condition}
-
-Ответь в формате:
-🌡️ Рекомендация: ...
-🧥 Что надеть: ...
-⚠️ Дополнительный совет: ...
-
-Будь конкретным, дружелюбным и полезным. Не добавляй лишней информации.
-`;
-
+/**
+ * Общая функция вызова DeepSeek API
+ */
+async function callDeepSeek(prompt: string): Promise<string> {
   try {
     console.log("📤 Отправка запроса к DeepSeek API...");
     console.log(`🤖 Модель: ${MODEL}`);
@@ -32,7 +20,8 @@ export async function getClothingAdvice(weather: WeatherData): Promise<string> {
       messages: [
         {
           role: "system",
-          content: "Ты — экспертный стилист и синоптик в одном лице. Отвечай сразу результатом, без рассуждений.",
+          content:
+            "Ты — экспертный стилист и синоптик в одном лице. Отвечай сразу результатом, без рассуждений.",
         },
         { role: "user", content: prompt },
       ],
@@ -57,12 +46,9 @@ export async function getClothingAdvice(weather: WeatherData): Promise<string> {
     const data = response.data;
     const message = data.choices?.[0]?.message;
 
-    // Извлекаем ответ
     let reply = message?.content || null;
 
-    // Если content пустой, пробуем reasoning
     if (!reply && message?.reasoning) {
-      // Ищем финальный ответ в рассуждениях
       const reasoning = message.reasoning;
       const match = reasoning.match(/["«]([^"»]+)["»]\s*$/);
       reply = match ? match[1] : reasoning;
@@ -73,7 +59,10 @@ export async function getClothingAdvice(weather: WeatherData): Promise<string> {
     }
 
     if (!reply) {
-      console.error("❌ Не удалось извлечь ответ:", JSON.stringify(message, null, 2));
+      console.error(
+        "❌ Не удалось извлечь ответ:",
+        JSON.stringify(message, null, 2),
+      );
       return "❌ Не удалось получить ответ от ИИ. Попробуйте позже.";
     }
 
@@ -102,4 +91,55 @@ export async function getClothingAdvice(weather: WeatherData): Promise<string> {
       return "❌ Внутренняя ошибка.";
     }
   }
+}
+
+/**
+ * Совет по одежде для одного момента времени (ручной ввод погоды)
+ */
+export async function getClothingAdvice(weather: WeatherData): Promise<string> {
+  const prompt = `
+Ты — умный помощник по выбору одежды. Пользователь сообщил тебе погоду.
+На основе этих данных дай чёткую, практичную рекомендацию, что надеть на улицу сегодня.
+
+Погодные данные:
+- Температура: ${weather.temperature}°C
+- Ветер: ${weather.windSpeed} км/ч
+- Осадки: ${weather.condition}
+
+Ответь в формате:
+🌡️ Рекомендация: ...
+🧥 Что надеть: ...
+⚠️ Дополнительный совет: ...
+
+Будь конкретным, дружелюбным и полезным. Не добавляй лишней информации.
+`;
+
+  return callDeepSeek(prompt);
+}
+
+/**
+ * Совет по одежде на весь день (утро/день/вечер)
+ */
+export async function getDailyClothingAdvice(
+  forecast: DailyForecast,
+): Promise<string> {
+  const prompt = `
+Ты — умный помощник по выбору одежды. Пользователь сообщил тебе прогноз погоды на сегодня.
+На основе этих данных дай чёткую, практичную рекомендацию, что надеть на улицу в течение дня.
+
+Прогноз:
+- Утро (08:00): ${forecast.morning.temperature}°C, ветер ${forecast.morning.windSpeed} км/ч, ${forecast.morning.condition}
+- День (14:00): ${forecast.afternoon.temperature}°C, ветер ${forecast.afternoon.windSpeed} км/ч, ${forecast.afternoon.condition}
+- Вечер (20:00): ${forecast.evening.temperature}°C, ветер ${forecast.evening.windSpeed} км/ч, ${forecast.evening.condition}
+
+Ответь в формате:
+🌡️ Общая рекомендация: ...
+🧥 Что надеть: ...
+⚠️ Дополнительный совет: ...
+
+Будь конкретным, дружелюбным и полезным. Учти перепады температуры в течение дня.
+Не добавляй лишней информации.
+`;
+
+  return callDeepSeek(prompt);
 }

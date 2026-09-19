@@ -1,9 +1,9 @@
 // src/bot/weather.ts
-import axios from 'axios';
-import { WeatherData, GeocodingResult } from './types.js';
+import axios from "axios";
+import { WeatherData, GeocodingResult } from "./types.js";
 
-// Интерфейс для ответа Open-Meteo (упрощенный)
-interface OpenMeteoResponse {
+// Интерфейс для ответа Open-Meteo (текущая погода)
+interface OpenMeteoCurrentResponse {
   current: {
     temperature_2m: number;
     wind_speed_10m: number;
@@ -11,21 +11,40 @@ interface OpenMeteoResponse {
   };
 }
 
+// Интерфейс для ответа Open-Meteo (почасовой прогноз)
+interface OpenMeteoHourlyResponse {
+  hourly: {
+    time: string[];
+    temperature_2m: number[];
+    wind_speed_10m: number[];
+    weather_code: number[];
+  };
+}
+
+// Прогноз на день (3 периода)
+export interface DailyForecast {
+  morning: WeatherData;
+  afternoon: WeatherData;
+  evening: WeatherData;
+}
+
 /**
  * Получает координаты города через Geocoding API
  */
-async function getCoordinates(city: string): Promise<{ lat: number; lon: number } | null> {
+async function getCoordinates(
+  city: string,
+): Promise<{ lat: number; lon: number } | null> {
   try {
     const response = await axios.get<GeocodingResult>(
-      'https://geocoding-api.open-meteo.com/v1/search',
+      "https://geocoding-api.open-meteo.com/v1/search",
       {
         params: {
           name: city,
-          count: 1, // Берем только первый результат
-          language: 'ru', // Пытаемся получить локализованное название
+          count: 1,
+          language: "ru",
         },
         timeout: 10000,
-      }
+      },
     );
 
     const result = response.data.results?.[0];
@@ -36,60 +55,122 @@ async function getCoordinates(city: string): Promise<{ lat: number; lon: number 
 
     return { lat: result.latitude, lon: result.longitude };
   } catch (error) {
-    console.error('❌ Ошибка Geocoding API:', error);
+    console.error("❌ Ошибка Geocoding API:", error);
     return null;
   }
 }
 
 /**
  * Расшифровывает код погоды WMO в текстовое описание
- * (Стандартные коды для Open-Meteo)
  */
 function decodeWeatherCode(code: number): string {
-  // 0: Ясно, 1-3: Облачно, 45,48: Туман, 51-55: Морось,
-  // 61-65: Дождь, 71-75: Снег, 80-82: Ливень, 95: Гроза
-  if (code === 0) return 'ясно';
-  if ([1, 2, 3].includes(code)) return 'облачно';
-  if ([45, 48].includes(code)) return 'туман';
-  if ([51, 53, 55].includes(code)) return 'морось';
-  if ([61, 63, 65].includes(code)) return 'дождь';
-  if ([71, 73, 75].includes(code)) return 'снег';
-  if ([80, 81, 82].includes(code)) return 'ливень';
-  if (code === 95) return 'гроза';
-  return 'неизвестно';
+  if (code === 0) return "ясно";
+  if ([1, 2, 3].includes(code)) return "облачно";
+  if ([45, 48].includes(code)) return "туман";
+  if ([51, 53, 55].includes(code)) return "морось";
+  if ([61, 63, 65].includes(code)) return "дождь";
+  if ([71, 73, 75].includes(code)) return "снег";
+  if ([80, 81, 82].includes(code)) return "ливень";
+  if (code === 95) return "гроза";
+  return "неизвестно";
 }
 
 /**
- * Основная функция получения погоды по названию города
+ * Основная функция получения ТЕКУЩЕЙ погоды по названию города
+ * (используется для ручного ввода и как fallback)
  */
-export async function getWeatherByCity(city: string): Promise<WeatherData | null> {
+export async function getWeatherByCity(
+  city: string,
+): Promise<WeatherData | null> {
   const coords = await getCoordinates(city);
   if (!coords) return null;
 
   try {
-    const response = await axios.get<OpenMeteoResponse>(
-      'https://api.open-meteo.com/v1/forecast',
+    const response = await axios.get<OpenMeteoCurrentResponse>(
+      "https://api.open-meteo.com/v1/forecast",
       {
         params: {
           latitude: coords.lat,
           longitude: coords.lon,
-          current: ['temperature_2m', 'wind_speed_10m', 'weather_code'],
-          wind_speed_unit: 'ms', // Метры в секунду
-          timezone: 'auto', // Автоматически по часовому поясу
+          current: ["temperature_2m", "wind_speed_10m", "weather_code"],
+          wind_speed_unit: "kmh",
+          timezone: "auto",
         },
         timeout: 10000,
-      }
+      },
     );
 
     const current = response.data.current;
-    
+
     return {
       temperature: Math.round(current.temperature_2m),
       windSpeed: Math.round(current.wind_speed_10m),
       condition: decodeWeatherCode(current.weather_code),
     };
   } catch (error) {
-    console.error('❌ Ошибка Forecast API:', error);
+    console.error("❌ Ошибка Forecast API:", error);
+    return null;
+  }
+}
+
+/**
+ * Получает прогноз погоды на конкретные часы (8:00, 14:00, 20:00) на сегодня
+ */
+export async function getDailyForecast(
+  city: string,
+): Promise<DailyForecast | null> {
+  const coords = await getCoordinates(city);
+  if (!coords) return null;
+
+  try {
+    const response = await axios.get<OpenMeteoHourlyResponse>(
+      "https://api.open-meteo.com/v1/forecast",
+      {
+        params: {
+          latitude: coords.lat,
+          longitude: coords.lon,
+          hourly: ["temperature_2m", "wind_speed_10m", "weather_code"],
+          wind_speed_unit: "kmh",
+          timezone: "auto",
+          forecast_days: 1,
+        },
+        timeout: 10000,
+      },
+    );
+
+    const hourly = response.data.hourly;
+    if (!hourly || !hourly.time) {
+      console.warn("⚠️ Пустой почасовой прогноз");
+      return null;
+    }
+
+    // Ищем индекс времени, соответствующего нужному часу
+    const getDataForHour = (targetHour: number): WeatherData => {
+      const index = hourly.time.findIndex((t: string) => {
+        // t приходит в формате "2025-01-15T08:00"
+        const hour = parseInt(t.split("T")[1].split(":")[0], 10);
+        return hour === targetHour;
+      });
+
+      if (index === -1) {
+        console.warn(`⚠️ Не найдены данные для часа ${targetHour}:00`);
+        return { temperature: 0, windSpeed: 0, condition: "нет данных" };
+      }
+
+      return {
+        temperature: Math.round(hourly.temperature_2m[index]),
+        windSpeed: Math.round(hourly.wind_speed_10m[index]),
+        condition: decodeWeatherCode(hourly.weather_code[index]),
+      };
+    };
+
+    return {
+      morning: getDataForHour(8),
+      afternoon: getDataForHour(14),
+      evening: getDataForHour(20),
+    };
+  } catch (error) {
+    console.error("❌ Ошибка Forecast API (Daily):", error);
     return null;
   }
 }
