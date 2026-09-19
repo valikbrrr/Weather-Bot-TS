@@ -1,4 +1,3 @@
-// src/bot/index.ts
 import { Telegraf, session, Context } from "telegraf";
 import { getClothingAdvice } from "./deepseek.js";
 import { SessionData } from "./types.js";

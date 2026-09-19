@@ -1,5 +1,3 @@
-// src/bot/types.ts
-
 export interface WeatherData {
   temperature: number;
   windSpeed: number;

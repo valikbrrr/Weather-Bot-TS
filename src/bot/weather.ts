@@ -1,4 +1,3 @@
-// src/bot/weather.ts
 import axios from "axios";
 import { WeatherData, GeocodingResult } from "./types.js";
 
@@ -78,11 +77,6 @@ async function getCoordinatesOpenMeteo(
   }
 }
 
-/**
- * Получает координаты через Nominatim (OpenStreetMap) — запасной вариант.
- * Хорошо справляется с мелкими городами и запросами вида
- * "Речица, Гомельская область".
- */
 async function getCoordinatesNominatim(
   city: string,
 ): Promise<{ lat: number; lon: number } | null> {
@@ -121,17 +115,11 @@ async function getCoordinatesNominatim(
   }
 }
 
-/**
- * Получает координаты города: сначала пробует Open-Meteo,
- * затем, если не нашёл, — Nominatim (OpenStreetMap).
- */
 async function getCoordinates(
   city: string,
 ): Promise<{ lat: number; lon: number } | null> {
-  // 1. Пробуем Open-Meteo (быстрее, покрывает крупные города)
   let coords = await getCoordinatesOpenMeteo(city);
 
-  // 2. Если не нашли — пробуем Nominatim (мелкие города, области)
   if (!coords) {
     console.log(`🔄 Open-Meteo не нашёл "${city}", пробую Nominatim...`);
     coords = await getCoordinatesNominatim(city);
@@ -140,9 +128,6 @@ async function getCoordinates(
   return coords;
 }
 
-/**
- * Расшифровывает код погоды WMO в текстовое описание
- */
 function decodeWeatherCode(code: number): string {
   if (code === 0) return "ясно";
   if ([1, 2, 3].includes(code)) return "облачно";

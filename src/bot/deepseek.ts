@@ -1,4 +1,3 @@
-// src/bot/deepseek.ts
 import axios from "axios";
 import { WeatherData } from "./types.js";
 import { DailyForecast } from "./weather.js";
@@ -6,9 +5,6 @@ import { DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL } from "./env.js";
 
 const MODEL = "deepseek-v4-flash";
 
-/**
- * Общая функция вызова DeepSeek API
- */
 async function callDeepSeek(prompt: string): Promise<string> {
   try {
     console.log("📤 Отправка запроса к DeepSeek API...");

@@ -1,4 +1,3 @@
-// src/bot/scheduler.ts
 import cron from "node-cron";
 import { Telegraf } from "telegraf";
 import { getDailyForecast } from "./weather.js";
