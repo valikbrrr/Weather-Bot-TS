@@ -21,6 +21,21 @@ interface OpenMeteoHourlyResponse {
   };
 }
 
+// Интерфейс для ответа Nominatim (OpenStreetMap)
+interface NominatimResult {
+  lat: string;
+  lon: string;
+  display_name: string;
+  type: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    state?: string;
+    country?: string;
+  };
+}
+
 // Прогноз на день (3 периода)
 export interface DailyForecast {
   morning: WeatherData;
@@ -29,9 +44,9 @@ export interface DailyForecast {
 }
 
 /**
- * Получает координаты города через Geocoding API
+ * Получает координаты города через Open-Meteo Geocoding API
  */
-async function getCoordinates(
+async function getCoordinatesOpenMeteo(
   city: string,
 ): Promise<{ lat: number; lon: number } | null> {
   try {
@@ -49,15 +64,80 @@ async function getCoordinates(
 
     const result = response.data.results?.[0];
     if (!result) {
-      console.warn(`⚠️ Город "${city}" не найден в Geocoding API`);
+      console.warn(`⚠️ Open-Meteo: город "${city}" не найден`);
       return null;
     }
 
+    console.log(
+      `✅ Open-Meteo: найден "${result.name}" (${result.latitude}, ${result.longitude})`,
+    );
     return { lat: result.latitude, lon: result.longitude };
   } catch (error) {
-    console.error("❌ Ошибка Geocoding API:", error);
+    console.error("❌ Ошибка Open-Meteo Geocoding API:", error);
     return null;
   }
+}
+
+/**
+ * Получает координаты через Nominatim (OpenStreetMap) — запасной вариант.
+ * Хорошо справляется с мелкими городами и запросами вида
+ * "Речица, Гомельская область".
+ */
+async function getCoordinatesNominatim(
+  city: string,
+): Promise<{ lat: number; lon: number } | null> {
+  try {
+    const response = await axios.get<NominatimResult[]>(
+      "https://nominatim.openstreetmap.org/search",
+      {
+        params: {
+          q: city,
+          format: "json",
+          limit: 1,
+          addressdetails: 1,
+          "accept-language": "ru",
+        },
+        headers: {
+          // Nominatim требует User-Agent для идентификации приложения
+          "User-Agent": "WeatherClothingBot/1.0 (https://github.com/)",
+        },
+        timeout: 10000,
+      },
+    );
+
+    const result = response.data?.[0];
+    if (!result) {
+      console.warn(`⚠️ Nominatim: город "${city}" не найден`);
+      return null;
+    }
+
+    console.log(
+      `✅ Nominatim: найден "${result.display_name}" (${result.lat}, ${result.lon})`,
+    );
+    return { lat: parseFloat(result.lat), lon: parseFloat(result.lon) };
+  } catch (error) {
+    console.error("❌ Ошибка Nominatim API:", error);
+    return null;
+  }
+}
+
+/**
+ * Получает координаты города: сначала пробует Open-Meteo,
+ * затем, если не нашёл, — Nominatim (OpenStreetMap).
+ */
+async function getCoordinates(
+  city: string,
+): Promise<{ lat: number; lon: number } | null> {
+  // 1. Пробуем Open-Meteo (быстрее, покрывает крупные города)
+  let coords = await getCoordinatesOpenMeteo(city);
+
+  // 2. Если не нашли — пробуем Nominatim (мелкие города, области)
+  if (!coords) {
+    console.log(`🔄 Open-Meteo не нашёл "${city}", пробую Nominatim...`);
+    coords = await getCoordinatesNominatim(city);
+  }
+
+  return coords;
 }
 
 /**
